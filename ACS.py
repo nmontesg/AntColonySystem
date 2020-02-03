@@ -25,12 +25,12 @@ del city, file, neighbors, neighbor
 
 """ACS parameters:"""
 alpha = 1. # influence of pheromone values (exploitation)
-beta = 1. # influence of edges costs (exploration)
+beta = 2. # influence of edges costs (exploration)
 q0 = 0.5 # pseudorandom proportionate rule parameter
-phi = 0.4 # pheromone decay coefficient (local pheromone update)
+phi = 0.2 # pheromone decay coefficient (local pheromone update)
 rho = 0.3 # evaporation rate (global pheromone update)
 tau0 = 0.01 # initial value of pheromone
-max_iter = 15
+max_iter = 10
 
 
 """Initialize pheromone values."""
@@ -51,6 +51,7 @@ class Ant:
     Pheromone values are updated locally. The total distance of the path is
     computed."""
     self.path = [] # erase previous path
+    self.path_length = 0.
     self.path.append('Barcelona') # start from BCN
     for _ in range(1,n):
       # select possible next stops
@@ -102,7 +103,7 @@ class Ant:
 
   
 class Colony:
-  def __init__(self, colsize=50):
+  def __init__(self, colsize=10):
     """Class that represents a colony of ants. colsize is the number of ants.
     Ants are randomly initialized."""
     self.size = colsize
@@ -149,8 +150,9 @@ col = Colony()
 bestSoFar = copy.deepcopy(col.best)
 print(col.best.path_length)
 print(bestSoFar.path_length)
+bestIter = 0
 iters = 1
-stop = max_iter
+stop = 50
 
 while iters <= stop:
   col.newPaths()
@@ -159,5 +161,7 @@ while iters <= stop:
   if col.best.path_length < bestSoFar.path_length:
     bestSoFar = copy.deepcopy(col.best)
     stop += max_iter
+    bestIter = iters
   iters += 1
   print(col.best.path_length)
+  print(bestSoFar.path_length)
