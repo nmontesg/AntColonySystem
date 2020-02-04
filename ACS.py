@@ -4,12 +4,14 @@ Created on Mon Feb  3 09:29:41 2020
 
 @author: Nieves Montes Gómez
 
-@description: Ant Colony System algorithm to solve the Travelling Salesman problem.
+@description: Ant Colony System algorithm to solve the Traveling Salesman problem.
 """
 
 import pandas as pd
 import numpy as np
 import os
+import folium
+
 
 """Import data on distances between European cities."""
 file = pd.read_csv("distancesEurope.csv", sep=';', index_col = 0)
@@ -22,15 +24,17 @@ for city in cities[:-1]:
     europe.update({(city, neighbor):file[city][neighbor]})
 del city, file, neighbors, neighbor
 
+coordinates = pd.read_csv("coordinates.csv", sep=';', index_col = 0)
+
 
 """ACS parameters:"""
 alpha = 1. # influence of pheromone values (exploitation)
 beta = 2. # influence of edges costs (exploration)
-q0 = 0.5 # pseudorandom proportionate rule parameter
-phi = 0.2 # pheromone decay coefficient (local pheromone update)
-rho = 0.3 # evaporation rate (global pheromone update)
+q0 = 0.8 # pseudorandom proportionate rule parameter
+phi = 0.04 # pheromone decay coefficient (local pheromone update)
+rho = 0.02 # evaporation rate (global pheromone update)
 tau0 = 0.01 # initial value of pheromone
-max_iter = 10
+max_iter = 20
 
 
 """Initialize pheromone values."""
@@ -63,9 +67,11 @@ class Ant:
       # get tau and eta for each next possible option
       for opt in poss_next:
         if (self.path[-1], opt) in europe.keys():
-          probs.update({opt : pheromones[(self.path[-1], opt)]**alpha / europe[(self.path[-1], opt)]**beta})
+          probs.update({opt : pheromones[(self.path[-1], opt)]**alpha / 
+                                         europe[(self.path[-1], opt)]**beta})
         elif (opt, self.path[-1]) in europe.keys():
-          probs.update({opt : pheromones[(opt, self.path[-1])]**alpha / europe[(opt, self.path[-1])]**beta})
+          probs.update({opt : pheromones[(opt, self.path[-1])]**alpha / 
+                                         europe[(opt, self.path[-1])]**beta})
         else:
           raise IndexError('Something went wrong.')
       total = sum(list(probs.values()))
@@ -77,33 +83,53 @@ class Ant:
         next_index = np.argmax(list(probs.values()))
         self.path.append(list(probs.keys())[next_index])
       else:
-        next_city = np.random.choice(list(probs.keys()), p = list(probs.values()))
+        next_city = np.random.choice(list(probs.keys()), 
+                                     p = list(probs.values()))
         self.path.append(next_city)
       # local pheromone update and add edge cost to total distance
       if (self.path[-1], self.path[-2]) in pheromones.keys():
-        pheromones[(self.path[-1], self.path[-2])] = (1-phi) * pheromones[(self.path[-1], self.path[-2])] + phi*tau0
+        pheromones[(self.path[-1], self.path[-2])] = (1-phi) * pheromones[
+            (self.path[-1], self.path[-2])] + phi*tau0
         self.path_length += europe[(self.path[-1], self.path[-2])]
       elif (self.path[-2], self.path[-1]) in pheromones.keys():
-        pheromones[(self.path[-2], self.path[-1])] = (1-phi) * pheromones[(self.path[-2], self.path[-1])] + phi*tau0
+        pheromones[(self.path[-2], self.path[-1])] = (1-phi) * pheromones[
+            (self.path[-2], self.path[-1])] + phi*tau0
         self.path_length += europe[(self.path[-2], self.path[-1])]
       else:
         raise IndexError('Something went wrong.')
-    # after exit the loop: local pheromone and distance update from last to Barcelona
+    # after exit the loop: local pheromone and distance update on edge closing the cycle
     if (self.path[-1], 'Barcelona') in pheromones.keys():
-      pheromones[(self.path[-1], 'Barcelona')] = (1-phi) * pheromones[(self.path[-1], 'Barcelona')] + phi*tau0
+      pheromones[(self.path[-1], 'Barcelona')] = (1-phi) * pheromones[
+          (self.path[-1], 'Barcelona')] + phi*tau0
       self.path_length += europe[(self.path[-1], 'Barcelona')]
     elif ('Barcelona', self.path[-1]) in pheromones.keys():
-      pheromones[('Barcelona', self.path[-1])] = (1-phi) * pheromones[('Barcelona', self.path[-1])] + phi*tau0
+      pheromones[('Barcelona', self.path[-1])] = (1-phi) * pheromones[
+          ('Barcelona', self.path[-1])] + phi*tau0
       self.path_length += europe[('Barcelona', self.path[-1])]
     else:
       raise IndexError('Something went wrong.')
       
-#  def mapPath(self):
-#    """Plot the ant's path on the Europe map."""
+  def mapPath(self):
+    """Plot the ant's path on the Europe map."""
+    m = folium.Map(location=(48, 10), zoom_start = 5, min_zoom = 4, max_zoom = 10)
+    points = []
+    for city in self.path:
+      points.append((coordinates.loc[city, 'lat'], coordinates.loc[city, 'lon']))
+      folium.Marker((coordinates.loc[city, 'lat'], coordinates.loc[city, 'lon']),
+                    popup = folium.Popup(city),
+                    icon = folium.Icon(color='red', icon='heart')).add_to(m)
+    points.append((coordinates.loc[self.path[0], 'lat'], 
+                   coordinates.loc[self.path[0], 'lon']))
+    folium.PolyLine(points, color = 'red', weight = 5, opacity = 0.75).add_to(m)
+    return m
+      
+  def __str__(self):
+    return ('Hi, I\'m a curious ant exploring Europe. I can visit all cities in a ' + 
+            str(self.path_length) + ' km tour.')
 
-  
+ 
 class Colony:
-  def __init__(self, colsize=10):
+  def __init__(self, colsize=20):
     """Class that represents a colony of ants. colsize is the number of ants.
     Ants are randomly initialized."""
     self.size = colsize
@@ -127,32 +153,33 @@ class Colony:
   def globalPheromoneUpdate(self):
     """Global pheromone update. Must be called after best ant has already been found."""
     DeltaBest = 1/self.best.path_length
-    for member in self.members:
-      for i in range(len(member.path) - 1):
-        if (member.path[i], member.path[i+1]) in pheromones.keys():
-          pheromones[(member.path[i], member.path[i+1])] = (1-phi) * pheromones[(member.path[i], member.path[i+1])] + phi*DeltaBest
-        elif (member.path[i+1], member.path[i]) in pheromones.keys():
-          pheromones[(member.path[i+1], member.path[i])] = (1-phi) * pheromones[(member.path[i+1], member.path[i])] + phi*DeltaBest
-        else:
-          raise IndexError('Something went wrong.')
-      # update pheromones in edge that closes the cycle
-      if (member.path[0], member.path[-1]) in pheromones.keys():
-        pheromones[(member.path[0], member.path[-1])] = (1-rho) * pheromones[(member.path[0], member.path[-1])] + rho*DeltaBest
-      elif (member.path[-1], member.path[0]) in pheromones.keys():
-        pheromones[(member.path[-1], member.path[0])] = (1-rho) * pheromones[(member.path[-1], member.path[0])] + rho*DeltaBest
+    # common update to all edges
+    for edge in pheromones.keys():
+      pheromones[edge] *= (1-rho)
+    # update to edges in best path
+    for i in range(len(self.best.path) - 1):
+      if (self.best.path[i], self.best.path[i+1]) in pheromones.keys():
+        pheromones[(self.best.path[i], self.best.path[i+1])] += rho*DeltaBest
+      elif (self.best.path[i+1], self.best.path[i]) in pheromones.keys():
+        pheromones[(self.best.path[i+1], self.best.path[i])] += rho*DeltaBest
       else:
         raise IndexError('Something went wrong.')
+    # edges that closes the cycle of the best path
+    if (self.best.path[0], self.best.path[-1]) in pheromones.keys():
+      pheromones[(self.best.path[0], self.best.path[-1])] += rho*DeltaBest
+    elif (self.best.path[-1], self.best.path[0]) in pheromones.keys():
+      pheromones[(self.best.path[-1], self.best.path[0])] += rho*DeltaBest
+    else:
+      raise IndexError('Something went wrong.')
+             
         
-        
-"""Ant Colony System:"""
+"""Ant Colony System"""
 import copy
 col = Colony()
 bestSoFar = copy.deepcopy(col.best)
-print(col.best.path_length)
-print(bestSoFar.path_length)
-bestIter = 0
 iters = 1
 stop = 50
+bestIter = 0
 
 while iters <= stop:
   col.newPaths()
@@ -163,5 +190,16 @@ while iters <= stop:
     stop += max_iter
     bestIter = iters
   iters += 1
-  print(col.best.path_length)
-  print(bestSoFar.path_length)
+
+# output result
+print('Best solution found during iteration #' + str(bestIter) + '.')
+print('This clever ant visits all cities in a ' + str(bestSoFar.path_length) + 
+      ' km tour.')
+print('Her adventorous journey is:', end = ' ')
+for city in bestSoFar.path:
+  print(city, end = '-')
+print(bestSoFar.path[0])
+
+# export map of route as html
+m = bestSoFar.mapPath()
+m.save('tour.html')
